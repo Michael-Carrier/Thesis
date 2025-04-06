@@ -1,0 +1,761 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Similarity Scores Visualization</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #container { width: 900px; height: 500px; border: 1px solid #ccc; position: relative; }
+    .point { position: absolute; width: 8px; height: 8px; border-radius: 50%; transform: translate(-50%, -50%); }
+    .known { background-color: blue; }
+    .myth { background-color: red; }
+    .tooltip { position: absolute; background: white; border: 1px solid #ccc; padding: 5px; display: none; }
+    #controls { margin-bottom: 20px; }
+    select { margin-right: 15px; }
+    #stats { margin: 10px 0; }
+  </style>
+</head>
+<body>
+  <h1>Similarity and Centrality Score Visualization</h1>
+  
+  <div id="controls">
+    <label for="author-select">Author:</label>
+    <select id="author-select">
+      <option value="All">All</option>
+    </select>
+    
+    <label for="connection-select">Connection Type:</label>
+    <select id="connection-select">
+      <option value="All">All</option>
+    </select>
+  </div>
+  
+  <div id="stats"></div>
+  
+  <div id="container">
+    <!-- X-axis label -->
+    <div style="position: absolute; bottom: -30px; width: 100%; text-align: center;">Similarity Score</div>
+    
+    <!-- Y-axis label -->
+    <div style="position: absolute; left: -40px; top: 50%; transform: rotate(-90deg);">Centrality Score</div>
+    
+    <!-- Points will be added here by JavaScript -->
+    <div id="tooltip" class="tooltip"></div>
+  </div>
+  
+  <div id="cluster-analysis" style="margin-top: 40px;">
+    <h2>Cluster Analysis</h2>
+    <div id="clusters" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;"></div>
+  </div>
+  
+  <script>
+    // Parse data function
+    function parseData(rawData) {
+      const lines = rawData.trim().split('\n');
+      const header = lines[0].split('\t');
+      const data = [];
+      
+      for (let i = 1; i < lines.length; i++) {
+        const row = lines[i].split('\t');
+        if (row.length === header.length) {
+          data.push({
+            undiscoveredSite: row[0],
+            connectedTo: row[1],
+            connectionType: row[2],
+            similarity: parseFloat(row[3]),
+            centrality: parseFloat(row[4]),
+            author: row[5],
+            contextType: row[6]
+          });
+        }
+      }
+      
+      return data;
+    }
+    
+    // Render the visualization
+    function renderVisualization(data) {
+      const container = document.getElementById('container');
+      const tooltip = document.getElementById('tooltip');
+      const containerWidth = container.offsetWidth;
+      const containerHeight = container.offsetHeight;
+      
+      // Clear previous points
+      container.querySelectorAll('.point').forEach(el => el.remove());
+      
+      // Determine min/max values for scaling
+      const simMin = 0.6;
+      const simMax = 1.0;
+      const centMin = 0.6;
+      const centMax = 1.0;
+      
+      // Create points
+      data.forEach(item => {
+        const point = document.createElement('div');
+        point.className = `point ${item.connectionType.toLowerCase()}`;
+        
+        // Position based on similarity and centrality
+        const x = ((item.similarity - simMin) / (simMax - simMin)) * (containerWidth - 40) + 20;
+        const y = containerHeight - ((item.centrality - centMin) / (centMax - centMin)) * (containerHeight - 40) - 20;
+        
+        point.style.left = x + 'px';
+        point.style.top = y + 'px';
+        
+        // Add hover events
+        point.addEventListener('mouseover', function(e) {
+          tooltip.innerHTML = `
+            <strong>${item.undiscoveredSite} → ${item.connectedTo}</strong><br>
+            Similarity: ${item.similarity.toFixed(3)}<br>
+            Centrality: ${item.centrality.toFixed(3)}<br>
+            Author: ${item.author}<br>
+            Connection: ${item.connectionType}<br>
+            Context: ${item.contextType}
+          `;
+          tooltip.style.display = 'block';
+          tooltip.style.left = (e.pageX - container.offsetLeft + 10) + 'px';
+          tooltip.style.top = (e.pageY - container.offsetTop + 10) + 'px';
+        });
+        
+        point.addEventListener('mouseout', function() {
+          tooltip.style.display = 'none';
+        });
+        
+        container.appendChild(point);
+      });
+      
+      // Update stats
+      const knownCount = data.filter(item => item.connectionType === 'Known').length;
+      const mythCount = data.filter(item => item.connectionType === 'myth').length;
+      document.getElementById('stats').innerHTML = `
+        Showing ${data.length} data points - Known: ${knownCount}, Myth: ${mythCount}
+      `;
+      
+      // Draw axes
+      drawAxes(container, containerWidth, containerHeight);
+      
+      // Update cluster analysis
+      updateClusterAnalysis(data);
+    }
+    
+    // Draw axes and grid
+    function drawAxes(container, width, height) {
+      // Clear previous axes
+      container.querySelectorAll('.axis').forEach(el => el.remove());
+      
+      // X-axis
+      const xAxis = document.createElement('div');
+      xAxis.className = 'axis';
+      xAxis.style.position = 'absolute';
+      xAxis.style.bottom = '20px';
+      xAxis.style.left = '20px';
+      xAxis.style.width = (width - 40) + 'px';
+      xAxis.style.height = '1px';
+      xAxis.style.backgroundColor = '#000';
+      container.appendChild(xAxis);
+      
+      // Y-axis
+      const yAxis = document.createElement('div');
+      yAxis.className = 'axis';
+      yAxis.style.position = 'absolute';
+      yAxis.style.top = '20px';
+      yAxis.style.left = '20px';
+      yAxis.style.width = '1px';
+      yAxis.style.height = (height - 40) + 'px';
+      yAxis.style.backgroundColor = '#000';
+      container.appendChild(yAxis);
+      
+      // X-axis ticks
+      for (let i = 0.6; i <= 1.0; i += 0.1) {
+        const tick = document.createElement('div');
+        tick.className = 'axis';
+        tick.style.position = 'absolute';
+        tick.style.bottom = '15px';
+        tick.style.left = (((i - 0.6) / 0.4) * (width - 40) + 20) + 'px';
+        tick.style.width = '1px';
+        tick.style.height = '10px';
+        tick.style.backgroundColor = '#000';
+        container.appendChild(tick);
+        
+        const label = document.createElement('div');
+        label.className = 'axis';
+        label.style.position = 'absolute';
+        label.style.bottom = '0';
+        label.style.left = (((i - 0.6) / 0.4) * (width - 40) + 20) + 'px';
+        label.style.transform = 'translateX(-50%)';
+        label.style.fontSize = '12px';
+        label.textContent = i.toFixed(1);
+        container.appendChild(label);
+      }
+      
+      // Y-axis ticks
+      for (let i = 0.6; i <= 1.0; i += 0.1) {
+        const tick = document.createElement('div');
+        tick.className = 'axis';
+        tick.style.position = 'absolute';
+        tick.style.left = '15px';
+        tick.style.top = (height - ((i - 0.6) / 0.4) * (height - 40) - 20) + 'px';
+        tick.style.width = '10px';
+        tick.style.height = '1px';
+        tick.style.backgroundColor = '#000';
+        container.appendChild(tick);
+        
+        const label = document.createElement('div');
+        label.className = 'axis';
+        label.style.position = 'absolute';
+        label.style.left = '0';
+        label.style.top = (height - ((i - 0.6) / 0.4) * (height - 40) - 20) + 'px';
+        label.style.transform = 'translateY(-50%)';
+        label.style.fontSize = '12px';
+        label.textContent = i.toFixed(1);
+        container.appendChild(label);
+      }
+    }
+    
+    // Update cluster analysis
+    function updateClusterAnalysis(data) {
+      const clustersContainer = document.getElementById('clusters');
+      clustersContainer.innerHTML = '';
+      
+      const similarityRanges = [
+        { min: 0.6, max: 0.7 },
+        { min: 0.7, max: 0.8 },
+        { min: 0.8, max: 0.9 },
+        { min: 0.9, max: 1.0 }
+      ];
+      
+      const centralityRanges = [
+        { min: 0.6, max: 0.7 },
+        { min: 0.7, max: 0.8 },
+        { min: 0.8, max: 0.9 },
+        { min: 0.9, max: 1.0 }
+      ];
+      
+      const clusters = [];
+      
+      for (const simRange of similarityRanges) {
+        for (const centRange of centralityRanges) {
+          const count = data.filter(item => 
+            item.similarity >= simRange.min && 
+            item.similarity < simRange.max &&
+            item.centrality >= centRange.min && 
+            item.centrality < centRange.max
+          ).length;
+          
+          if (count > 0) {
+            clusters.push({
+              simMin: simRange.min,
+              simMax: simRange.max,
+              centMin: centRange.min,
+              centMax: centRange.max,
+              count,
+              percentage: (count / data.length * 100).toFixed(1)
+            });
+          }
+        }
+      }
+      
+      // Sort clusters by count (descending)
+      clusters.sort((a, b) => b.count - a.count);
+      
+      clusters.forEach(cluster => {
+        const clusterCard = document.createElement('div');
+        clusterCard.style.padding = '10px';
+        clusterCard.style.border = '1px solid #ccc';
+        clusterCard.style.borderRadius = '4px';
+        clusterCard.style.backgroundColor = '#f8f8f8';
+        
+        clusterCard.innerHTML = `
+          <div><strong>Similarity:</strong> ${cluster.simMin.toFixed(1)}-${cluster.simMax.toFixed(1)}</div>
+          <div><strong>Centrality:</strong> ${cluster.centMin.toFixed(1)}-${cluster.centMax.toFixed(1)}</div>
+          <div style="margin-top: 5px;">
+            <strong>Count:</strong> ${cluster.count} (${cluster.percentage}%)
+          </div>
+        `;
+        
+        clustersContainer.appendChild(clusterCard);
+      });
+    }
+    
+    // Populate author and connection type filters
+    function populateFilters(data) {
+      const authorSelect = document.getElementById('author-select');
+      const connectionSelect = document.getElementById('connection-select');
+      
+      // Clear existing options except "All"
+      while (authorSelect.options.length > 1) {
+        authorSelect.remove(1);
+      }
+      
+      while (connectionSelect.options.length > 1) {
+        connectionSelect.remove(1);
+      }
+      
+      // Get unique authors and connection types
+      const authors = [...new Set(data.map(item => item.author))].sort();
+      const connectionTypes = [...new Set(data.map(item => item.connectionType))].sort();
+      
+      // Add options
+      authors.forEach(author => {
+        const option = document.createElement('option');
+        option.value = author;
+        option.textContent = author;
+        authorSelect.appendChild(option);
+      });
+      
+      connectionTypes.forEach(type => {
+        const option = document.createElement('option');
+        option.value = type;
+        option.textContent = type;
+        connectionSelect.appendChild(option);
+      });
+      
+      // Add event listeners
+      authorSelect.addEventListener('change', filterData);
+      connectionSelect.addEventListener('change', filterData);
+    }
+    
+    // Filter data based on selections
+    function filterData() {
+      const authorSelect = document.getElementById('author-select');
+      const connectionSelect = document.getElementById('connection-select');
+      
+      const selectedAuthor = authorSelect.value;
+      const selectedConnectionType = connectionSelect.value;
+      
+      let filteredData = allData;
+      
+      if (selectedAuthor !== 'All') {
+        filteredData = filteredData.filter(item => item.author === selectedAuthor);
+      }
+      
+      if (selectedConnectionType !== 'All') {
+        filteredData = filteredData.filter(item => item.connectionType === selectedConnectionType);
+      }
+      
+      renderVisualization(filteredData);
+    }
+    
+    // Sample data - replace with your full dataset
+    const sampleData = `Undiscovered Site	connected_to	Connection Type	Similarity	Centrality	author	Context Type
+Abala	atina	Known	0.842	0.781	Pliny	Three
+Abala	amyclae	Known	0.84	0.761	Pliny	Single
+Abolani	fidenae	Known	0.965	0.798	Pliny	Three
+Abolani	fidenae	Known	0.952	0.771	Pliny	Single
+acuca	nola	Known	0.944	0.897	Livy	Three
+acuca	Cumae	Known	0.934	0.87	Livy	Single
+acuca	Cumae	Known	0.934	0.87	Livy	Single
+Alfaterni	Auximum	Known	0.935	0.846	Pliny	Three
+Alfaterni	Cliternia	Known	0.879	0.772	Pliny	Single
+Anxanum	Corfinium	Known	0.904	0.763	Pliny	Three
+Anxanum	Corfinium	Known	0.883	0.724	Pliny	Single
+Apina	troy	myth	0.896	0.78	Pliny	Single
+Apina	trebula	Known	0.934	0.86	Pliny	Three
+apiolae	signia	Known	0.95	0.9	Livy	Three
+apiolae	collatia	Known	0.95	0.888	Livy	Single
+apiolae	collatia	Known	0.95	0.888	Livy	Single
+Arcanum	remus	myth	0.929	0.873	Silius	Single
+Arcanum	remus	myth	0.929	0.873	Silius	Single
+argentanum	ocriculum	Known	0.955	0.88	Livy	Three
+argentanum	ocriculum	Known	0.949	0.879	Livy	Single
+argentanum	ocriculum	Known	0.949	0.879	Livy	Single
+ausona	casilinum	Known	0.978	0.934	Livy	Three
+ausona	sora	Known	0.966	0.901	Livy	Single
+ausona	sora	Known	0.966	0.901	Livy	Single
+austicula	trebula	Known	0.984	0.904	Livy	Three
+austicula	trebula	Known	0.939	0.863	Livy	Single
+austicula	trebula	Known	0.939	0.863	Livy	Single
+bergae	ocriculum	Known	0.955	0.88	Livy	Three
+bergae	ocriculum	Known	0.949	0.879	Livy	Single
+bergae	ocriculum	Known	0.949	0.879	Livy	Single
+besidiae	ocriculum	Known	0.955	0.88	Livy	Three
+besidiae	ocriculum	Known	0.949	0.879	Livy	Single
+besidiae	ocriculum	Known	0.949	0.879	Livy	Single
+bolani	eretum	Known	0.951	0.903	Livy	Three
+bolani	fidenae	Known	0.967	0.8	Pliny	Three
+bolani	fidenae	Known	0.957	0.775	Pliny	Single
+Bubetani	fidenae	Known	0.964	0.801	Pliny	Three
+Bubetani	fidenae	Known	0.953	0.772	Pliny	Single
+cameria	fidenae	Known	0.967	0.912	Livy	Three
+Carentini	Cliternia	Known	0.91	0.811	Pliny	Three
+Carentini	Cliternia	Known	0.861	0.776	Pliny	Single
+Carissanum	pompeii	Known	0.873	0.762	Pliny	Three
+Carissanum	antium	Known	0.739	0.59	Pliny	Single
+carventum	privernum	Known	0.95	0.895	Livy	Three
+carventum	nomentum	Known	0.949	0.881	Livy	Single
+carventum	nomentum	Known	0.949	0.881	Livy	Single
+carventum citadel	herculaneum	Known	0.969	0.868	Livy	Three
+carventum citadel	signia	Known	0.967	0.897	Livy	Single
+carventum citadel	signia	Known	0.967	0.897	Livy	Single
+carystum	canusium	Known	0.92	0.839	Pliny	Three
+carystum	canusium	Known	0.899	0.783	Pliny	Single
+Casuentum	Cliternia	Known	0.9	0.818	Pliny	Three
+Casuentum	ostia	Known	0.815	0.716	Pliny	Single
+Cingulani	Auximum	Known	1	0.859	Pliny	Three
+Cingulani	Auximum	Known	1	0.759	Pliny	Single
+clampetia	ocriculum	Known	0.967	0.909	Livy	Three
+clampetia	tibur	Known	0.963	0.903	Livy	Single
+clampetia	tibur	Known	0.963	0.903	Livy	Single
+clampetia	terina	Known	1	0.817	Pliny	Three
+Clusiolum	interamnates	Known	0.946	0.779	Pliny	Three
+Clusiolum	interamnates	Known	0.984	0.803	Pliny	Single
+cominium	aquilonia	Known	0.987	0.943	Livy	Three
+cominium	aquilonia	Known	0.985	0.924	Livy	Single
+cominium	aquilonia	Known	0.985	0.924	Livy	Single
+cominium	Auximum	Known	0.935	0.846	Pliny	Three
+contenebra	lavinium	Known	0.949	0.884	Livy	Three
+contenebra	privernum	Known	0.937	0.875	Livy	Single
+contenebra	privernum	Known	0.937	0.875	Livy	Single
+corbio	collatia	Known	0.986	0.94	Livy	Three
+corbio	luca	Known	0.986	0.926	Livy	Single
+corbio	luca	Known	0.986	0.926	Livy	Single
+corioli	antium	Known	0.983	0.941	Livy	Three
+corioli	capena	Known	0.965	0.907	Livy	Single
+corioli	capena	Known	0.965	0.907	Livy	Single
+corioli	fidenae	Known	0.954	0.792	Pliny	Three
+corioli	fidenae	Known	0.949	0.764	Pliny	Single
+cortuosa	lavinium	Known	0.962	0.903	Livy	Three
+Cusuetani	fidenae	Known	0.965	0.799	Pliny	Three
+Cusuetani	fidenae	Known	0.955	0.773	Pliny	Single
+cutina	signia	Known	0.951	0.895	Livy	Three
+cutina	nola	Known	0.933	0.875	Livy	Single
+cutina	nola	Known	0.933	0.875	Livy	Single
+duronia	ascanius	myth	0.884	0.825	Livy	Single
+duronia	ascanius	myth	0.884	0.825	Livy	Single
+ecetra	antium	Known	0.983	0.94	Livy	Three
+ecetra	antium	Known	0.98	0.921	Livy	Single
+ecetra	antium	Known	0.98	0.921	Livy	Single
+empulum	suessula	Known	0.943	0.882	Livy	Three
+empulum	tibur	Known	0.954	0.875	Livy	Single
+empulum	tibur	Known	0.954	0.875	Livy	Single
+feritrum	veii	Known	0.939	0.875	Livy	Single
+feritrum	veii	Known	0.939	0.875	Livy	Single
+Ficolenses	aufidena	Known	1	0.8	Pliny	Three
+Ficolenses	Fidentia	Known	0.919	0.764	Pliny	Single
+Forentani	Ginosa	Known	0.994	0.732	Pliny	Three
+Forentani	Ginosa	Known	1	0.722	Pliny	Single
+fresilia	satricum	Known	0.946	0.904	Livy	Three
+fresilia	satricum	Known	0.935	0.875	Livy	Single
+fresilia	satricum	Known	0.935	0.875	Livy	Single
+Herbanum	fidenae	Known	0.932	0.783	Pliny	Three
+Herbanum	Tuficum	Known	0.925	0.765	Pliny	Single
+Hortenses	fidenae	Known	0.96	0.852	Pliny	Three
+Hortenses	fidenae	Known	0.976	0.788	Pliny	Single
+larissa	nola	Known	0.985	0.941	Livy	Three
+larissa	troy	myth	0.963	0.849	Pliny	Three
+larissa	nola	Known	0.982	0.922	Livy	Single
+larissa	nola	Known	0.982	0.922	Livy	Single
+larissa	Varia	Known	0.912	0.801	Pliny	Single
+Latinienses	fidenae	Known	0.954	0.823	Pliny	Three
+Latinienses	fidenae	Known	0.956	0.769	Pliny	Single
+laurentum	Caieta	Known	0.931	0.826	Cicero	Three
+laurentum	Caieta	Known	0.931	0.826	Cicero	Three
+laurentum	aesis	Known	0.965	0.836	Livy	Three
+laurentum	veii	Known	0.937	0.877	Livy	Single
+laurentum	veii	Known	0.937	0.877	Livy	Single
+laurentum	luca	Known	0.917	0.86	Silius	Single
+laurentum	luca	Known	0.917	0.86	Silius	Single
+laurentum	ardea	Known	0.924	0.838	Pliny	Three
+laurentum	ardea	Known	0.909	0.768	Pliny	Single
+longula	antium	Known	0.976	0.931	Livy	Three
+longula	satricum	Known	0.968	0.906	Livy	Single
+longula	satricum	Known	0.968	0.906	Livy	Single
+longula	fidenae	Known	0.947	0.824	Pliny	Three
+lymphaeum	ocriculum	Known	0.955	0.88	Livy	Three
+lymphaeum	ocriculum	Known	0.949	0.879	Livy	Single
+lymphaeum	ocriculum	Known	0.949	0.879	Livy	Single
+Macrales	fidenae	Known	0.954	0.822	Pliny	Three
+Macrales	fidenae	Known	0.95	0.762	Pliny	Single
+Manates	fidenae	Known	0.965	0.836	Pliny	Three
+Manates	fidenae	Known	0.931	0.749	Pliny	Single
+marouion	luca	Known	0.889	0.836	Silius	Single
+marouion	luca	Known	0.889	0.836	Silius	Single
+Mateolani	Ginosa	Known	0.967	0.745	Pliny	Three
+Mateolani	Ginosa	Known	1	0.722	Pliny	Single
+milionia	tusculum	Known	0.981	0.933	Livy	Three
+milionia	praeneste	Known	0.965	0.901	Livy	Single
+milionia	praeneste	Known	0.965	0.901	Livy	Single
+Munienses	fidenae	Known	0.949	0.815	Pliny	Three
+Munienses	fidenae	Known	0.945	0.753	Pliny	Single
+murgantia	veii	Known	0.989	0.94	Livy	Three
+murgantia	signia	Known	0.98	0.92	Livy	Single
+murgantia	signia	Known	0.98	0.92	Livy	Single
+neapolis	tusculum	Known	0.991	0.904	Cicero	Three
+neapolis	capua	Known	0.976	0.908	Cicero	Three
+neapolis	capua	Known	0.974	0.93	Livy	Three
+neapolis	capua	Known	0.959	0.868	Cicero	Single
+neapolis	signia	Known	0.862	0.804	Cicero	Single
+neapolis	antium	Known	0.97	0.915	Livy	Single
+neapolis	antium	Known	0.97	0.915	Livy	Single
+neapolis	ostia	Known	0.975	0.892	Pliny	Three
+neapolis	ostia	Known	0.966	0.862	Pliny	Single
+Novana	Asculum	Known	0.996	0.855	Pliny	Three
+Novana	Asculum	Known	1	0.781	Pliny	Single
+nuceria	collatia	Known	0.971	0.918	Cicero	Three
+nuceria	tibur	Known	0.672	0.642	Cicero	Three
+nuceria	nola	Known	0.99	0.941	Livy	Three
+nuceria	amyclae	Known	0.974	0.922	Silius	Three
+nuceria	amyclae	Known	0.974	0.922	Silius	Three
+nuceria	collatia	Known	0.975	0.92	Cicero	Single
+nuceria	tibur	Known	0.816	0.717	Cicero	Single
+nuceria	nola	Known	0.985	0.917	Livy	Single
+nuceria	nola	Known	0.985	0.917	Livy	Single
+nuceria	acerrae	Known	0.98	0.892	Silius	Single
+nuceria	acerrae	Known	0.98	0.892	Silius	Single
+nuceria	Parthenope	Known	0.959	0.85	Pliny	Three
+nuceria	praeneste	Known	0.93	0.814	Pliny	Single
+Octulani	fidenae	Known	0.938	0.806	Pliny	Three
+Octulani	fidenae	Known	0.93	0.732	Pliny	Single
+Olliculani	fidenae	Known	0.944	0.808	Pliny	Three
+Olliculani	fidenae	Known	0.936	0.739	Pliny	Single
+orbitanium	fidenae	Known	0.845	0.812	Cicero	Three
+orbitanium	aecae	Known	0.994	0.902	Livy	Three
+orbitanium	arpi	Known	0.959	0.806	Pliny	Three
+Padinates	Fidentia	Known	1	0.835	Pliny	Three
+Padinates	Fidentia	Known	1	0.784	Pliny	Single
+palumbinum	satricum	Known	0.957	0.911	Livy	Three
+palumbinum	veii	Known	0.931	0.877	Livy	Single
+palumbinum	veii	Known	0.931	0.877	Livy	Single
+palumbinum	clusium	Known	0.914	0.782	Pliny	Three
+palumbinum	Treba	Known	0.885	0.738	Pliny	Single
+plestina	satricum	Known	0.946	0.904	Livy	Three
+plestina	satricum	Known	0.935	0.875	Livy	Single
+plestina	satricum	Known	0.935	0.875	Livy	Single
+romulea	anagnia	Known	0.967	0.905	Livy	Three
+romulea	nola	Known	0.97	0.921	Silius	Three
+romulea	nola	Known	0.97	0.921	Silius	Three
+romulea	romulus	myth	0.938	0.865	Livy	Single
+romulea	romulus	myth	0.938	0.865	Livy	Single
+romulea	capua	Known	0.928	0.852	Silius	Single
+romulea	capua	Known	0.928	0.852	Silius	Single
+sabata	quirinus	myth	0.96	0.904	Silius	Three
+sabata	quirinus	myth	0.96	0.904	Silius	Three
+sabata	nola	Known	0.92	0.873	Silius	Single
+sabata	nola	Known	0.92	0.873	Silius	Single
+sabata	ostia	Known	0.914	0.829	Pliny	Three
+sabata	canusium	Known	0.831	0.742	Pliny	Single
+Scaptia	numa pompilius	myth	0.87	0.801	Livy	Three
+Senum	tusculum	Known	0.894	0.854	Cicero	Three
+Senum	tusculum	Known	0.894	0.854	Cicero	Three
+Senum	amulius	myth	0.953	0.866	Silius	Three
+Senum	amulius	myth	0.953	0.866	Silius	Three
+Senum	signia	Known	0.981	0.866	Pliny	Three
+Senum	Vico	Known	0.969	0.848	Pliny	Single
+Sicani	fidenae	Known	0.922	0.81	Pliny	Three
+Sicani	fidenae	Known	0.923	0.736	Pliny	Single
+Sisolenses	atina	Known	0.92	0.804	Pliny	Three
+Sisolenses	Ginosa	Known	0.932	0.731	Pliny	Single
+Solonates	Fidentia	Known	1	0.835	Pliny	Three
+Solonates	Fidentia	Known	1	0.784	Pliny	Single
+Tadiates	Auximum	Known	0.935	0.846	Pliny	Three
+Tadiates	Cliternia	Known	0.879	0.772	Pliny	Single
+taurania	collatia	Known	0.945	0.905	Livy	Three
+taurania	romulus	myth	0.833	0.698	Pliny	Single
+taurania	pompeii	Known	0.897	0.804	Pliny	Three
+tifata	casilinum	Known	0.986	0.939	Livy	Three
+tifata	casilinum	Known	0.978	0.914	Livy	Single
+tifata	casilinum	Known	0.978	0.914	Livy	Single
+tifata	signia	Known	0.935	0.871	Silius	Single
+tifata	signia	Known	0.935	0.871	Silius	Single
+tifernum	satricum	Known	0.977	0.929	Livy	Three
+tifernum	tibur	Known	0.977	0.909	Livy	Single
+tifernum	tibur	Known	0.977	0.909	Livy	Single
+trica	numitor	myth	0.961	0.894	Silius	Three
+trica	numitor	myth	0.961	0.894	Silius	Three
+trica	nola	Known	0.898	0.835	Silius	Single
+trica	nola	Known	0.898	0.835	Silius	Single
+Tutienses	atina	Known	0.919	0.802	Pliny	Three
+Tutienses	fidenae	Known	0.907	0.714	Pliny	Single
+ulubrae	firmum	Known	0.691	0.636	Cicero	Single
+velia	capua	Known	0.921	0.85	Cicero	Three
+velia	tusculum	Known	0.939	0.883	Cicero	Three
+velia	tusculum	Known	0.97	0.873	Cicero	Three
+velia	tusculum	Known	0.97	0.873	Cicero	Three
+velia	romulus	myth	0.963	0.91	Cicero	Three
+velia	romulus	myth	0.963	0.91	Cicero	Three
+velia	ardea	Known	0.974	0.924	Livy	Three
+velia	quirinus	myth	0.964	0.904	Silius	Three
+velia	quirinus	myth	0.964	0.904	Silius	Three
+velia	cora	Known	0.917	0.849	Cicero	Single
+velia	capena	Known	0.969	0.909	Livy	Single
+velia	capena	Known	0.969	0.909	Livy	Single
+velia	paestum	Known	1	0.801	Pliny	Three
+velia	paestum	Known	1	0.771	Pliny	Single
+Velienses	atina	Known	0.944	0.838	Pliny	Three
+Velienses	fidenae	Known	0.906	0.8	Pliny	Single
+Venetulani	fidenae	Known	0.911	0.793	Pliny	Three
+Venetulani	Auximum	Known	0.898	0.67	Pliny	Single
+verrugo	veii	Known	0.985	0.932	Livy	Three
+verrugo	ardea	Known	0.986	0.921	Livy	Single
+verrugo	ardea	Known	0.986	0.921	Livy	Single
+vescia	ostia	Known	0.983	0.936	Livy	Three
+vescia	volturnum	Known	0.975	0.915	Livy	Single
+vescia	volturnum	Known	0.975	0.915	Livy	Single
+vitellia	lavinium	Known	0.972	0.925	Livy	Three
+vitellia	luca	Known	0.966	0.908	Livy	Single
+vitellia	luca	Known	0.966	0.908	Livy	Single
+Viticini	reate	Known	0.932	0.838	Pliny	Three
+Viticini	antium	Known	0.9	0.777	Pliny	Single
+Ἀπίολα	Ἄλβα Φουκινίς	Known	0.977	0.898	Strabo	Three
+Ἀπίολα	Ἄλβα Φουκινίς	Known	0.977	0.898	Strabo	Three
+Ἀπίολα	Πανδοσία	Known	0.937	0.869	Strabo	Single
+Ἀπίολα	Πανδοσία	Known	0.937	0.869	Strabo	Single
+Δικαιάρχεια	Βρεντέσιον	Known	0.99	0.955	Appian	Three
+Δικαιάρχεια	Ἀλεξάνδρεια	myth	0.896	0.866	Josephus	Three
+Δικαιάρχεια	Ἀλεξάνδρεια	myth	0.896	0.866	Josephus	Three
+Δικαιάρχεια	Ἡράκλεια	Known	0.986	0.952	Strabo	Three
+Δικαιάρχεια	Ἡράκλεια	Known	0.986	0.952	Strabo	Three
+Δικαιάρχεια	Βρεντέσιον	Known	0.977	0.938	Appian	Single
+Δικαιάρχεια	Ἀλεξάνδρεια	myth	0.941	0.889	Josephus	Single
+Δικαιάρχεια	Ἀλεξάνδρεια	myth	0.941	0.889	Josephus	Single
+Δικαιάρχεια	Ἡράκλειον	Known	0.982	0.928	Strabo	Single
+Δικαιάρχεια	Ἡράκλειον	Known	0.982	0.928	Strabo	Single
+Ἰντεράμνιον	Αἴσιος	Known	0.969	0.872	Strabo	Three
+Ἰντεράμνιον	Αἴσιος	Known	0.969	0.872	Strabo	Three
+Καῖνυς	Ἠρητὸν	Known	0.984	0.927	Strabo	Three
+Καῖνυς	Ἠρητὸν	Known	0.984	0.927	Strabo	Three
+Καῖνυς	Καρχηδών	myth	0.985	0.841	Strabo	Single
+Καῖνυς	Καρχηδών	myth	0.985	0.841	Strabo	Single
+Καλάσαρνα	Γρουμεντὸν	Known	0.986	0.928	Strabo	Three
+Καλάσαρνα	Γρουμεντὸν	Known	0.986	0.928	Strabo	Three
+Καταράκτα	Ἀλεξάνδρεια	myth	0.972	0.946	Josephus	Three
+Καταράκτα	Ἀλεξάνδρεια	myth	0.972	0.946	Josephus	Three
+Καταράκτα	Βρεντέσιον	Known	0.994	0.952	Strabo	Three
+Καταράκτα	Βρεντέσιον	Known	0.994	0.952	Strabo	Three
+Καταράκτα	Ἀλεξάνδρεια	myth	0.959	0.936	Josephus	Single
+Καταράκτα	Ἀλεξάνδρεια	myth	0.959	0.936	Josephus	Single
+Καταράκτα	Ἀλεξάνδρεια	myth	0.987	0.921	Strabo	Single
+Καταράκτα	Ἀλεξάνδρεια	myth	0.987	0.921	Strabo	Single
+Κολλατία	Ἄλβα Φουκινίς	Known	0.964	0.92	Dionysius	Three
+Κολλατία	Ἄλβα Φουκινίς	Known	0.964	0.92	Dionysius	Three
+Κολλατία	Τροία	myth	0.958	0.908	Dionysius	Single
+Κολλατία	Τροία	myth	0.958	0.908	Dionysius	Single
+Λάρισα	Κύρις	Known	0.977	0.927	Dionysius	Three
+Λάρισα	Κύρις	Known	0.977	0.927	Dionysius	Three
+Λάρισα	Κύμη	Known	0.991	0.943	Pausanias	Three
+Λάρισα	Κύμη	Known	0.991	0.943	Pausanias	Three
+Λάρισα	Ὄλυμπος	myth	0.992	0.963	Polybius	Three
+Λάρισα	Ὄλυμπος	myth	0.992	0.963	Polybius	Three
+Λάρισα	Ἡράκλεια	Known	0.994	0.961	Strabo	Three
+Λάρισα	Ἡράκλεια	Known	0.994	0.961	Strabo	Three
+Λάρισα	Ὀλυμπία	myth	0.944	0.908	Thucydides	Three
+Λάρισα	Κόρα	Known	0.979	0.92	Xenophon	Three
+Λάρισα	Κόρα	Known	0.979	0.92	Xenophon	Three
+Λάρισα	Κρότων	Known	0.963	0.902	Dionysius	Single
+Λάρισα	Κρότων	Known	0.963	0.902	Dionysius	Single
+Λάρισα	Δωδώνη	myth	0.981	0.922	Pausanias	Single
+Λάρισα	Δωδώνη	myth	0.981	0.922	Pausanias	Single
+Λάρισα	Ἀλεξάνδρεια	myth	0.984	0.947	Polybius	Single
+Λάρισα	Ἀλεξάνδρεια	myth	0.984	0.947	Polybius	Single
+Λάρισα	Κύμη	Known	0.987	0.931	Strabo	Single
+Λάρισα	Κύμη	Known	0.987	0.931	Strabo	Single
+Λάρισα	Ὀλυμπία	myth	0.971	0.871	Thucydides	Single
+Λάρισα	Ὀλυμπία	myth	0.971	0.871	Thucydides	Single
+Λάρισα	Λέσβος	myth	0.97	0.923	Xenophon	Single
+Λάρισσα	Βρεντέσιον	Known	0.988	0.948	Plutarch	Three
+Λάρισσα	Βρεντέσιον	Known	0.988	0.948	Plutarch	Three
+Λάρισσα	Ῥήγιον	Known	0.973	0.948	Diodorus	Three
+Λάρισσα	Ῥήγιον	Known	0.973	0.948	Diodorus	Three
+Λάρισσα	Ἀλεξάνδρεια	myth	0.984	0.932	Plutarch	Single
+Λάρισσα	Ἀλεξάνδρεια	myth	0.984	0.932	Plutarch	Single
+Λάρισσα	Περσέπολις	myth	0.966	0.85	Diodorus	Single
+Λαυρεντόν	Δέρθων	Known	0.96	0.876	Strabo	Three
+Λαυρεντόν	Δέρθων	Known	0.96	0.876	Strabo	Three
+Λαυρεντόν	Πανδοσία	Known	0.942	0.879	Strabo	Single
+Λαυρεντόν	Πανδοσία	Known	0.942	0.879	Strabo	Single
+Λοῦκα	Βρεντέσιον	Known	0.95	0.88	Plutarch	Three
+Λοῦκα	Βρεντέσιον	Known	0.95	0.88	Plutarch	Three
+Λοῦκα	Ἠρητὸν	Known	0.989	0.937	Strabo	Three
+Λοῦκα	Ἠρητὸν	Known	0.989	0.937	Strabo	Three
+Λοῦκα	Λέσβος	myth	0.977	0.863	Plutarch	Single
+Λοῦκα	Λέσβος	myth	0.977	0.863	Plutarch	Single
+Λοῦκα	Ἄντιον	Known	0.945	0.869	Strabo	Single
+Λοῦκα	Ἄντιον	Known	0.945	0.869	Strabo	Single
+Μαρκῖνα	Ἐλέα	Known	0.985	0.936	Strabo	Three
+Μαρκῖνα	Ἐλέα	Known	0.985	0.936	Strabo	Three
+Μαρκῖνα	Πλακεντία	Known	0.944	0.866	Strabo	Single
+Μαρκῖνα	Πλακεντία	Known	0.944	0.866	Strabo	Single
+Μαρούιον	Ἄντιον	Known	0.927	0.858	Dionysius	Three
+Μαρούιον	Ἄντιον	Known	0.927	0.858	Dionysius	Three
+Μαρούιον	Ἄτερνον	Known	0.987	0.924	Strabo	Three
+Μαρούιον	Ἄτερνον	Known	0.987	0.924	Strabo	Three
+Μαρούιον	Κρότων	Known	0.957	0.884	Dionysius	Single
+Μαρούιον	Κρότων	Known	0.957	0.884	Dionysius	Single
+Μαρούιον	Κορφίνιον	Known	0.98	0.865	Strabo	Single
+Μαρούιον	Κορφίνιον	Known	0.98	0.865	Strabo	Single
+Μιντούρνας	Ῥήγιον	Known	0.944	0.9	Appian	Three
+Μιντούρνας	Κανύσιον	Known	0.983	0.932	Plutarch	Three
+Μιντούρνας	Κανύσιον	Known	0.983	0.932	Plutarch	Three
+Μιντούρνας	Ἐγνατία ὁδός	Known	0.981	0.904	Strabo	Three
+Μιντούρνας	Ἐγνατία ὁδός	Known	0.981	0.904	Strabo	Three
+Μιντούρνας	Σάλερνον	Known	0.943	0.901	Appian	Single
+Μιντούρνας	Ὀλυμπία	myth	0.925	0.849	Plutarch	Single
+Μιντούρνας	Ὀλυμπία	myth	0.925	0.849	Plutarch	Single
+Μιντούρνας	Φρεγέλλαι	Known	0.993	0.857	Strabo	Single
+Μιντούρνας	Φρεγέλλαι	Known	0.993	0.857	Strabo	Single
+Νεάπολις	Βρεντέσιον	Known	0.991	0.954	Strabo	Three
+Νεάπολις	Βρεντέσιον	Known	0.991	0.954	Strabo	Three
+Νεάπολις	Βαβυλών	myth	0.986	0.882	Strabo	Single
+Νεάπολις	Βαβυλών	myth	0.986	0.882	Strabo	Single
+Οὐέλια	Κύμη	Known	0.988	0.927	Dionysius	Three
+Οὐέλια	Κύμη	Known	0.988	0.927	Dionysius	Three
+Οὐέλια	Κρότων	Known	0.961	0.891	Dionysius	Single
+Οὐέλια	Κρότων	Known	0.961	0.891	Dionysius	Single
+Παλάτιον	Κόρα	Known	0.992	0.96	Plutarch	Three
+Παλάτιον	Κόρα	Known	0.992	0.96	Plutarch	Three
+Παλάτιον	Κύμη	Known	0.991	0.928	Dionysius	Three
+Παλάτιον	Κύμη	Known	0.991	0.928	Dionysius	Three
+Παλάτιον	Ἡράκλειον	Known	0.989	0.936	Plutarch	Single
+Παλάτιον	Ἡράκλειον	Known	0.989	0.936	Plutarch	Single
+Παλάτιον	Κύμη	Known	0.964	0.919	Dionysius	Single
+Παλάτιον	Κύμη	Known	0.964	0.919	Dionysius	Single
+Πάννα	Γρουμεντὸν	Known	0.982	0.937	Strabo	Three
+Πάννα	Γρουμεντὸν	Known	0.982	0.937	Strabo	Three
+Πάννα	Ἀγκών	Known	0.948	0.884	Strabo	Single
+Πάννα	Ἀγκών	Known	0.948	0.884	Strabo	Single
+Πειραιεύς	Κανύσιον	Known	0.964	0.896	Appian	Three
+Πειραιεύς	Κύρις	Known	0.991	0.957	Plutarch	Three
+Πειραιεύς	Κύρις	Known	0.991	0.957	Plutarch	Three
+Πειραιεύς	Λέσβος	myth	0.995	0.971	Diodorus	Three
+Πειραιεύς	Λέσβος	myth	0.995	0.971	Diodorus	Three
+Πειραιεύς	Κύμη	Known	0.979	0.956	Herodotus	Three
+Πειραιεύς	Κύμη	Known	0.979	0.956	Herodotus	Three
+Πειραιεύς	Ἴλιον	myth	0.99	0.958	Pausanias	Three
+Πειραιεύς	Ἴλιον	myth	0.99	0.958	Pausanias	Three
+Πειραιεύς	Βρεντέσιον	Known	0.982	0.941	Strabo	Three
+Πειραιεύς	Βρεντέσιον	Known	0.982	0.941	Strabo	Three
+Πειραιεύς	Λέσβος	myth	0.992	0.958	Thucydides	Three
+Πειραιεύς	Λέσβος	myth	0.992	0.958	Thucydides	Three
+Πειραιεύς	Ὀλυμπία	myth	0.98	0.951	Xenophon	Three
+Πειραιεύς	Ὀλυμπία	myth	0.98	0.951	Xenophon	Three
+Πειραιεύς	Ῥήγιον	Known	0.952	0.908	Appian	Single
+Πειραιεύς	Κύρις	Known	0.989	0.937	Plutarch	Single
+Πειραιεύς	Κύρις	Known	0.989	0.937	Plutarch	Single
+Πειραιεύς	Λέσβος	myth	0.985	0.947	Diodorus	Single
+Πειραιεύς	Λέσβος	myth	0.942	0.906	Herodotus	Single
+Πειραιεύς	Κόρα	Known	0.975	0.935	Pausanias	Single
+Πειραιεύς	Κόρα	Known	0.975	0.935	Pausanias	Single
+Πειραιεύς	Ἡράκλεια	Known	0.963	0.897	Strabo	Single
+Πειραιεύς	Ἡράκλεια	Known	0.963	0.897	Strabo	Single
+Πειραιεύς	Λέσβος	myth	0.983	0.936	Thucydides	Single
+Πειραιεύς	Λέσβος	myth	0.983	0.936	Thucydides	Single
+Πειραιεύς	Τροία	myth	0.98	0.942	Xenophon	Single
+Σούνα	Βατία	Known	0.938	0.861	Dionysius	Three
+Σούνα	Βατία	Known	0.938	0.861	Dionysius	Three
+Σούνα	Κρότων	Known	0.931	0.859	Dionysius	Single
+Σούνα	Κρότων	Known	0.931	0.859	Dionysius	Single
+Συεσβόλα	Βατία	Known	0.953	0.878	Dionysius	Three
+Συεσβόλα	Βατία	Known	0.953	0.878	Dionysius	Three
+Συεσβόλα	Τριβόλα	Known	0.976	0.855	Dionysius	Single
+Συεσβόλα	Τριβόλα	Known	0.976	0.855	Dionysius	Single`;
+
+    // Global variable to store all data
+    let allData = [];
+    
+    // Initialize visualization
+    window.onload = function() {
+      allData = parseData(sampleData);
+      populateFilters(allData);
+      renderVisualization(allData);
+    };
+  </script>
+</body>
+</html>
